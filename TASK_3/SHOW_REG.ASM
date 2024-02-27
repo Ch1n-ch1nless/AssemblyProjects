@@ -15,8 +15,12 @@ Y_CNTR		equ SCREEN_HEIGHT / 2	; Y-coordinate of frame center
 FRAME_WIDTH	equ 0018h		; final width of the frame
 FRAME_HEIGHT	equ 000eh		; final height of the frame
 
-FRAME_COLOR	equ 4eh			
-SHADOW_COLOR	equ 18h
+FRAME_COLOR	equ 4eh			; color of the frame with registers	
+SHADOW_COLOR	equ 18h			; color of frame shadow
+
+LAUNCH_SYMBOL	equ 02h			; scan-code of '1'
+
+HEX_BASE	equ 10h			; 16 = Base of hexadecimal number system
 
 ;+++++++++++++++++++++++++++++++++++++++++++++++
 
@@ -93,11 +97,13 @@ ChangeIRQ0	proc
 ;-----------------------------------------------
 New09       	proc
 
-            	push ss es ds sp bp si di dx cx bx ax
+            	push ax
 		
 		in al, 60h
-            	cmp al, 02h		; v constanty!
-		jne DontShowFrame
+            	cmp al, LAUNCH_SYMBOL
+		jne TurnOffFrame
+
+		mov cs:FrameFlag, 1		; Turn on drawing frame with registers 
 		
 		in al, 61h
 		or al, 80h
@@ -108,11 +114,11 @@ New09       	proc
 		mov al, 20h
 		out 20h, al
 		
-		pop ax bx cx dx di si bp sp ds es ss 
+		pop ax 
 		
 		iret
 		
-DontShowFrame:	pop ax bx cx dx di si bp sp ds es ss 
+TurnOffFrame:	pop ax 
 		
 GoToOld09:	db 0EAh
 Old090fs	dw 0h
@@ -123,10 +129,31 @@ Old09Seg	dw 0h
 
 ;-----------------------------------------------
 New08		proc
+		
+		cmp cs:FrameFlag, 1		; Check that user launchs frame with registers
+		jne DontDrawFrame
+
+		push ss es ds sp bp si di dx cx bx ax
+
+		mov bp, sp
+
+		push cs
+		pop  ds		
+
+		call DrawFrame
+		call PrintRegs
+
+		pop  ax bx cx dx di si bp sp ds es ss
+
+DontDrawFrame:	db 0EAh
+Old080fs	dw 0h
+Old08Seg	dw 0h
 
 		endp
 ;-----------------------------------------------
 
+;===============================================
+;		MEMORY_FUNCTIONS
 ;-----------------------------------------------
 ;Calculate len of string
 ;Entry:	SI = address of the string
@@ -151,7 +178,6 @@ FindEnd:	neg cx
 
 ;===============================================
 ;		  FRAME SEGMENT
-
 ;-----------------------------------------------
 ;Calculate new position shift of the upper left corner 
 ;Entry:	none
@@ -214,37 +240,37 @@ DrawFrame	proc
 		mov ax, VIDEOSEG
 		mov es, ax
 
-		call CalculateShift	; DI = new coordinates of left upper corner
+		call CalculateShift		; DI = new coordinates of left upper corner
 
-		mov ah, FRAME_COLOR	; AH = FRAME_COLOR
-		xor dx, dx	 	; DX = NULL
+		mov ah, FRAME_COLOR		; AH = FRAME_COLOR
+		xor dx, dx	 		; DX = NULL
 		
 		mov si, offset FrameTemplate
 		mov cx, FRAME_WIDTH
-		call DrawLine		; draw upper line of the frame
+		call DrawLine			; draw upper line of the frame
 
-DrawVerLines:	cmp dx, FRAME_HEIGHT	;<-------- Cycle, which draws vertical lines
+DrawVerLines:	cmp dx, FRAME_HEIGHT		;<-------- Cycle, which draws vertical lines
 		je StopDrawVerLines
-		sub di, FRAME_WIDTH * 2	;<-+ DI += (80 - FRAME_WIDTH) * 2
-		add di, SCREEN_WIDTH * 2;</
+		sub di, FRAME_WIDTH * 2		;<-+ DI += (80 - FRAME_WIDTH) * 2
+		add di, SCREEN_WIDTH * 2	;</
 		mov cx, FRAME_WIDTH
 		call DrawLine
 		sub si, 3
 		inc dx		
-		jmp DrawVerLines	;---------->
+		jmp DrawVerLines		;---------->
 
 StopDrawVerLines:
-		add si, 3d		; go to adress of lower line
+		add si, 3d			; go to adress of lower line
 		
-		sub di, FRAME_WIDTH * 2	;<-+ DI += (80 - FRAME_WIDTH) * 2
-		add di, SCREEN_WIDTH * 2;</
+		sub di, FRAME_WIDTH * 2		;<-+ DI += (80 - FRAME_WIDTH) * 2
+		add di, SCREEN_WIDTH * 2	;</
 		mov cx, FRAME_WIDTH
-		call DrawLine		; draw lower line of the frame
+		call DrawLine			; draw lower line of the frame
 
-		call PrintTitle		; print title of frame
-		call DrawHeadLine	; draw headline of frame
+		call PrintTitle			; print title of frame
+		call DrawHeadLine		; draw headline of frame
 
-		call DrawShadow		; draw shadow of the frame
+		call DrawShadow			; draw shadow of the frame
 
 		ret
 		endp
@@ -421,9 +447,12 @@ StopPrintRegs:	pop ds					; Get old value
 		endp
 ;-----------------------------------------------
 ;===============================================
+;===============================================
  
 ;===============================================
 ;		        DATA
+
+FrameFlag	db 00h
 
 FrameTemplate 	db 'ÖÄ·'
 		db 'º º'
