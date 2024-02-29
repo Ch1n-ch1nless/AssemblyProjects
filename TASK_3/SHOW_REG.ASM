@@ -22,6 +22,10 @@ LAUNCH_SYMBOL	equ 02h			; scan-code of '1'
 
 HEX_BASE	equ 10h			; 16 = Base of hexadecimal number system
 
+REG_COUNT	equ 11d			; Count of registers, which will be printed
+
+FLAG_OFF	equ 00h			
+
 ;+++++++++++++++++++++++++++++++++++++++++++++++
 
 .code
@@ -30,108 +34,129 @@ org 100h
 
 ;vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 
-Start:  	call ChangeIRQ1
-		call ChangeIRQ0
+Start:  	call ChangeInt09
+		call ChangeInt08
 
-            	mov ax, 3100h
-            	mov dx, offset EOP
-            	shr dx, 4
-		inc dx
+            	mov ax, 3100h		;<----
+            	mov dx, offset EOP	;DX = number of paragraphs, which program will keep
+            	shr dx, 4		;Call functions to save code
+		inc dx			;---->
 
             	int 21h
 ;^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+;===============================================
+;		INTERRUPT_FUNCTIONS
 ;-----------------------------------------------
-
-ChangeIRQ1	proc
-		mov ax, 3509h
-		int 21h
+;Change address of INT09 in int table
+;Entry:	none
+;Exit:	none
+;Dstr:	AX, BX, ES
+;-----------------------------------------------
+ChangeInt09	proc
+		mov ax, 3509h			;<\
+		int 21h				;<-+ ES:[BX] = address of INT09
 		
-		mov Old090fs, bx
+		mov Old09Ofs, bx		; Save offset of INT09 to Old0fOfs
 		mov bx, es
-		mov Old09Seg, bx
+		mov Old09Seg, bx		; Save code segment of INT09 to Old09Seg
 
-		xor bx, bx		
-		mov es, bx
-            	mov bx, 4 * 09h
+		xor bx, bx			; Get address of memory cell, which keeps address of INT09	
+		mov es, bx			; ES = 0000h
+            	mov bx, 4 * 09h			; BX = 0024h
 
 		push cs
 		pop  ax
 
-		cli
-            	mov es:[bx], offset New09
-            	mov es:[bx + 2], ax
-            	sti
+		cli				; Prohibit interrupts
+            	mov es:[bx], offset NewInt09	; Save new offset in int table
+            	mov es:[bx + 2], ax		; Save new code segment in int table
+            	sti				; Activate interrupts
 
 		ret
 		endp
 ;-----------------------------------------------
 
 ;-----------------------------------------------
-
-ChangeIRQ0	proc
-
-		mov ax, 3508h
-		int 21h
+;Change address of INT08 in int table
+;Entry:	none
+;Exit:	none
+;Dstr:	AX, BX, ES
+;-----------------------------------------------
+ChangeInt08	proc
+		mov ax, 3508h			;<\
+		int 21h				;<-+ ES:[BX] = address of INT08
 		
-		mov Old080fs, bx
+		mov Old08Ofs, bx		; Save offset of INT09 to Old08Ofs
 		mov bx, es
-		mov Old08Seg, bx
+		mov Old08Seg, bx		; Save code segment of INT08 to Old08Seg
 
-		xor bx, bx		
-		mov es, bx
-            	mov bx, 4 * 08h
+		xor bx, bx			; Get address of memory cell, which keeps address of INT08	
+		mov es, bx			; ES = 0000h
+            	mov bx, 4 * 08h			; BX = 0020h
 
 		push cs
 		pop  ax
 
-		cli
-            	mov es:[bx], offset New08
-            	mov es:[bx + 2], ax
-            	sti
-		
+		cli				; Prohibit interrupts
+            	mov es:[bx], offset NewInt08	; Save new offset in int table
+            	mov es:[bx + 2], ax		; Save new code segment in int table
+            	sti				; Activate interrupts
+
 		ret
 		endp
 ;-----------------------------------------------
 
 ;-----------------------------------------------
-New09       	proc
+;Function-trumpoline of INT09h, which will change flag of drawing the frame
+;Entry:	none
+;Exit:	none
+;Dstr:	none
+;-----------------------------------------------
+NewInt09       	proc
 
-            	push ax
+            	push ax				; Keep value of AX
 		
 		in al, 60h
             	cmp al, LAUNCH_SYMBOL
-		jne TurnOffFrame
+		jne DontChangeFlag
 
-		mov cs:FrameFlag, 1		; Turn on drawing frame with registers 
-		
-		in al, 61h
-		or al, 80h
-		out 61h, al
-		and al, not 80h
-		out 61h, al
+		mov al, cs:[FrameFlag]		;<\
+		not al				;<-+ Change flag of drawing the frame	
+		mov cs:[FrameFlag], al		;</		
 
-		mov al, 20h
-		out 20h, al
+		in al, 61h			;<\
+		or al, 80h			;<-\
+		out 61h, al			;<--+ Send to keyboard the signal
+		and al, not 80h			;<-/
+		out 61h, al			;</
+
+		mov al, 20h			; Send to PPI end of interrupt
+		out 20h, al			; Activate other interruptions
 		
-		pop ax 
+		pop ax 				; Return AX
 		
 		iret
 		
-TurnOffFrame:	pop ax 
+DontChangeFlag:	pop ax 				; Return AX
 		
 GoToOld09:	db 0EAh
-Old090fs	dw 0h
+Old09Ofs	dw 0h
 Old09Seg	dw 0h
 
             	endp
 ;-----------------------------------------------
 
 ;-----------------------------------------------
-New08		proc
+;Function-trumpoline of INT08, which draw of frame, if flag is on
+;Entry:	none
+;Exit:	none
+;Dstr:	none
+;-----------------------------------------------
+NewInt08		proc
 		
-		cmp cs:FrameFlag, 1		; Check that user launchs frame with registers
-		jne DontDrawFrame
+		cmp cs:FrameFlag, FLAG_OFF	; Check that falg is off
+		je DontDrawFrame
 
 		push ss es ds sp bp si di dx cx bx ax
 
@@ -146,7 +171,7 @@ New08		proc
 		pop  ax bx cx dx di si bp sp ds es ss
 
 DontDrawFrame:	db 0EAh
-Old080fs	dw 0h
+Old08Ofs	dw 0h
 Old08Seg	dw 0h
 
 		endp
@@ -349,38 +374,38 @@ StrCycle:	lodsb
 
 ;===============================================
 ;		    REGISTERS
-
 ;-----------------------------------------------
-;Print value of word on screen
+;Print value of byte on screen
 ;Entry:	DI = address in video memory, where our word will be writen
 ;	AL = byte, which will be printed
 ;Exit:	none
-;Dstr:	DI
+;Dstr:	DI, DS = CS
 ;-----------------------------------------------
-PrintWord	proc				; Remake to itoa_16
+PrintByte	proc				
 		
-		push ax bx cx
+		push ax bx cx dx
 
-		xor ah, ah			;------>
-		mov cl, al			;Get first 4 bites of register AL
-		and al, 0f0h			;Masky v bity! Translate the number to hex-symbol
-		shr ax, 4			;Print it
-		mov bx, offset HexAlphabet	;
-		add bx, ax			;
-		mov ah, 4eh			;
-		mov al, cs:[bx]			;
-		stosw				;<-------
+		push cs
+		pop  ds
 
-		mov al, cl			;------->
-		and al, 00fh			;Get last 4 bites of register AL
-		xor ah, ah			;Translate the number to hex-symbol	
-		mov bx, offset HexAlphabet	;Print it
-		add bx, ax			;
-		mov ah, 4eh			;
-		mov al, cs:[bx]			;
-		stosw				;<------
+		mov dl, HEX_BASE
+		lea bx, HexAlphabet
+
+		div dl
+		mov cl, ah
+		xor ah, ah
+		xlat				; AL = [BX+AL]
+		mov ah, FRAME_COLOR
+		stosw
+
+		mov al, cl
+		lea bx, HexAlphabet
+		xor ah, ah
+		xlat
+		mov ah, FRAME_COLOR
+		stosw
 		
-		pop  cx bx ax
+		pop  dx cx bx ax
 
 		ret
 		endp
@@ -413,14 +438,16 @@ Cycle:		lodsb
 PrintRegs	proc
 		mov ax, VIDEOSEG
 		mov es, ax
-		mov di, (X_CNTR - FRAME_WIDTH / 2 + 1 + (Y_CNTR - FRAME_HEIGHT / 2 + 3) * SCREEN_WIDTH ) * 2d
+		mov di, (Y_CNTR - FRAME_HEIGHT / 2 + 3) * SCREEN_WIDTH
+		add di, X_CNTR - FRAME_WIDTH / 2 + 1
+		shl di, 1				; DI = address on screen
 		mov si, offset RegistersMsg		; SI = address of register messages
 		push ds					;<\
 		push cs					;<-+ Remember old value of DS and make DS = CS
 		pop ds					;</
 		xor dx, dx
 
-Print1reg:	cmp dx, 11d				;<-------------
+Print1reg:	cmp dx, REG_COUNT			;<-------------
 		je StopPrintRegs			;
 		call StrLen				; Calculate the length of the string we print	
 		sub si, cx				; SI = begin of message
@@ -430,10 +457,11 @@ Print1reg:	cmp dx, 11d				;<-------------
 							;
 		mov ax, ss:[bp]				; Get value of register
 		mov ch, al				; <--+ Print 'AH' value
-		mov al, ah				; <-/
-		call PrintWord				; </
-		mov al, ch				; <-+ Print 'AL' value
-		call PrintWord				; </
+		shr ax, 8				; <-/
+		call PrintByte				; </
+		mov al, ch				; <--+ Print 'AL' value
+		xor ah, ah				; <-/
+		call PrintByte				; </
 							;
 		add di, (SCREEN_WIDTH - 10) * 2d	; Go to next line
 		inc dx					; DX++
@@ -446,7 +474,6 @@ StopPrintRegs:	pop ds					; Get old value
 		ret
 		endp
 ;-----------------------------------------------
-;===============================================
 ;===============================================
  
 ;===============================================
