@@ -13,16 +13,17 @@ X_CNTR		equ SCREEN_WIDTH  / 2	; X-coordinate of frame center
 Y_CNTR		equ SCREEN_HEIGHT / 2	; Y-coordinate of frame center
 
 FRAME_WIDTH	equ 0018h		; final width of the frame
-FRAME_HEIGHT	equ 000eh		; final height of the frame
+FRAME_HEIGHT	equ 0010h		; final height of the frame
 
 FRAME_COLOR	equ 4eh			; color of the frame with registers	
 SHADOW_COLOR	equ 18h			; color of frame shadow
 
-LAUNCH_SYMBOL	equ 02h			; scan-code of '1'
+LAUNCH_FRAME_SYMBOL	equ 02h		; scan-code of '1'
+LAUNCH_CRINGE		equ 36h		; scan-code of 'Right Shift'
 
 HEX_BASE	equ 10h			; 16 = Base of hexadecimal number system
 
-REG_COUNT	equ 11d			; Count of registers, which will be printed
+REG_COUNT	equ 13d			; Count of registers, which will be printed
 
 FLAG_OFF	equ 00h			
 
@@ -108,7 +109,7 @@ ChangeInt08	proc
 ;-----------------------------------------------
 
 ;-----------------------------------------------
-;Function-trumpoline of INT09h, which will change flag of drawing the frame
+;Function-trampoline of INT09h, which will change flag of drawing the frame
 ;Entry:	none
 ;Exit:	none
 ;Dstr:	none
@@ -118,14 +119,14 @@ NewInt09       	proc
             	push ax				; Keep value of AX
 		
 		in al, 60h
-            	cmp al, LAUNCH_SYMBOL
-		jne DontChangeFlag
+            	cmp al, LAUNCH_FRAME_SYMBOL
+		jne DontChangeFrameFlag
 
 		mov al, cs:[FrameFlag]		;<\
 		not al				;<-+ Change flag of drawing the frame	
 		mov cs:[FrameFlag], al		;</		
 
-		in al, 61h			;<\
+OutPut:		in al, 61h			;<\
 		or al, 80h			;<-\
 		out 61h, al			;<--+ Send to keyboard the signal
 		and al, not 80h			;<-/
@@ -138,9 +139,18 @@ NewInt09       	proc
 		
 		iret
 		
-DontChangeFlag:	pop ax 				; Return AX
+DontChangeFrameFlag:	
 		
-GoToOld09:	db 0EAh
+		cmp al, LAUNCH_CRINGE
+		jne GoToOld09
+		mov al, cs:[TrashFlag]
+		not al
+		mov cs:[TrashFlag], al
+		jmp OutPut 
+		
+GoToOld09:	pop ax 				; Return AX
+		
+		db 0EAh
 Old09Ofs	dw 0h
 Old09Seg	dw 0h
 
@@ -148,14 +158,14 @@ Old09Seg	dw 0h
 ;-----------------------------------------------
 
 ;-----------------------------------------------
-;Function-trumpoline of INT08, which draw of frame, if flag is on
+;Function-trampoline of INT08, which draw of frame, if flag is on
 ;Entry:	none
 ;Exit:	none
 ;Dstr:	none
 ;-----------------------------------------------
 NewInt08		proc
 		
-		cmp cs:FrameFlag, FLAG_OFF	; Check that falg is off
+		cmp cs:FrameFlag, FLAG_OFF	; Check that flag is off
 		je DontDrawFrame
 
 		push ss es ds sp bp si di dx cx bx ax
@@ -170,7 +180,21 @@ NewInt08		proc
 
 		pop  ax bx cx dx di si bp sp ds es ss
 
-DontDrawFrame:	db 0EAh
+DontDrawFrame:	cmp cs:TrashFlag, FLAG_OFF	; Check that flag is off
+		je DontMakeCringe
+
+		push ss es ds sp bp si di dx cx bx ax
+
+		mov bp, sp
+		add bp, REG_COUNT * 2d - 2
+		
+		mov ax, ss:[bp]
+
+		call DrawCringeFrame
+
+		pop  ax bx cx dx di si bp sp ds es ss
+
+DontMakeCringe:	db 0EAh
 Old08Ofs	dw 0h
 Old08Seg	dw 0h
 
@@ -383,30 +407,30 @@ StrCycle:	lodsb
 ;-----------------------------------------------
 PrintByte	proc				
 		
-		push ax bx cx dx
+		push ax bx cx dx		; Keep values of registers
 
-		push cs
-		pop  ds
+		push cs				;<\
+		pop  ds				;<-+ DS = CS
 
-		mov dl, HEX_BASE
-		lea bx, HexAlphabet
+		mov dl, HEX_BASE		; DL = 16d
+		lea bx, HexAlphabet		; BX = address of hexadecimal alphabet	
 
-		div dl
-		mov cl, ah
-		xor ah, ah
-		xlat				; AL = [BX+AL]
-		mov ah, FRAME_COLOR
-		stosw
+		div dl				;<-+ AH = high 4 bites of AL, 
+		mov cl, ah			;<-+ AL = low  4 bites of AL
+		xor ah, ah			;
+		xlat				;<-------
+		mov ah, FRAME_COLOR		; Print high 4 bites of AL
+		stosw				;------->
 
-		mov al, cl
-		lea bx, HexAlphabet
-		xor ah, ah
-		xlat
-		mov ah, FRAME_COLOR
-		stosw
+		mov al, cl			;-------->
+		lea bx, HexAlphabet		;Print low 4 bites of AL
+		xor ah, ah			;
+		xlat				;
+		mov ah, FRAME_COLOR		;
+		stosw				;<--------
 		
-		pop  dx cx bx ax
-
+		pop  dx cx bx ax		; Return old values
+	
 		ret
 		endp
 ;-----------------------------------------------
@@ -475,11 +499,39 @@ StopPrintRegs:	pop ds					; Get old value
 		endp
 ;-----------------------------------------------
 ;===============================================
+
+;===============================================
+;		CRINGE_FUNCTIONS
+;-----------------------------------------------
+;Take from random address data array and draw it!
+;Entry:	AX = address of code segment cringe data array
+;	BX = address of offset cringe data array
+;Exit:	none
+;Dstr: 	CX, DI, SI, ES, DS
+;-----------------------------------------------
+DrawCringeFrame	proc
+			
+		mov ds, ax	
+		mov si, bx
+
+		mov di, VIDEOSEG
+		mov es, di
+		xor di, di
+
+		mov cx, 80d * 25d
+		rep movsw 	
+
+		ret
+		endp
+;-----------------------------------------------
+;===============================================
  
 ;===============================================
 ;		        DATA
 
 FrameFlag	db 00h
+
+TrashFlag	db 00h
 
 FrameTemplate 	db 'ÖÄ·'
 		db 'º º'
@@ -502,8 +554,8 @@ RegistersMsg	db 'AX := $'
 		db 'DS := $'
 		db 'ES := $'
 		db 'SS := $'
-
-SIXTEEN		db 10h
+		db 'IP := $'
+		db 'CS := $'
 
 ;===============================================
 EOP:
