@@ -1,4 +1,5 @@
 #include "text_lib.h"
+#include "interface.h"
 
 const char * const PROGRAM = "PASSWORD.COM";
 const char * const PATCHED_PROGRAM = "PATCH.COM";
@@ -18,6 +19,8 @@ int main()
     Patching(&patched_program);
 
     WriteInNewFile(&patched_program, PATCHED_PROGRAM);
+
+    ShowFunnyInterface();
 
     return 0;
 }
