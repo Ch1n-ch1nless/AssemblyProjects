@@ -9,7 +9,9 @@ void ShowFunnyInterface()
     if (picture == NULL)
         printf("Cannot open file with picture...\n");
 
-    txBitBlt (txDC(), 0, 0, 800, 500, picture, 0, 0);   
+    txBitBlt (txDC(), 0, 0, 800, 500, picture, 0, 0); 
+
+    txPlaySound("music\\mingoster.wav");  
 
     txDeleteDC(picture);
 
