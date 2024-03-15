@@ -4,7 +4,7 @@ section .data
 
 RetAddress:     dq 0
 
-Buffer:         db 3 dup(0)
+Buffer:         db 10 dup(0)
 BufSize         equ $ - Buffer
 
 HexAlphabet:    db "0123456789ABCDEF"
@@ -125,6 +125,11 @@ PrintString:
             call StrCat
             jmp _Default
 
+PrintDuzNumber:
+            mov rbx, 12
+            call PrintNumber
+            jmp _Default
+
 PrintHexNumber:
             mov rbx, 4
             call ItoaTwoPower
@@ -149,7 +154,8 @@ section .rodata
                 dq PrintOctNumber               ; = "%o"
                 dq 's' - 'o' - 1 dup(PrintChar)
                 dq PrintString                  ; = "%s"
-                dq 'x' - 's' - 1 dup(PrintChar)
+                dq PrintDuzNumber               ; = "%t"
+                dq 'x' - 't' - 1 dup(PrintChar)
                 dq PrintHexNumber               ; = "%x"
 
 ;-----------------------------------------------

@@ -4,6 +4,8 @@ extern "C" int MyPrint(const char* format, ...);
 
 int main()
 {
+    MyPrint("%s_%s_%s_%s_%s", "LOL", "KEK", "CHEBUREK", "hihi", "haha");
+
     const char* str = "%d %d\n";
 
     MyPrint(str, 123, 456);
@@ -22,6 +24,8 @@ int main()
     str = "A lot of %b%b%b%d%x\n";
 
     MyPrint(str, 5, 5, 5, 5, 5);
+
+    MyPrint("Проверка двенадцатеричной системы!: %t %t %t\n", 1, 12, 144);
 
     return 0;
 }
